@@ -29,6 +29,18 @@ export const createReimbursementService =
       amount,
     } = payload;
 
+    const [mapping] = await db
+      .select()
+      .from(employeeManagerMapping)
+      .where(eq(employeeManagerMapping.employeeId, employeeId));
+
+    if (!mapping) {
+      throw new AppError(
+        "Employee does not have a manager assigned",
+        403
+      );
+    }
+
     /*
       Step 1:
       Create status row
