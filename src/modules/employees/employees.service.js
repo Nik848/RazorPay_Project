@@ -202,9 +202,7 @@ export const getEmployeesService = async (
         )
       );
 
-    return subordinates.map(
-      (record) => record.users
-    );
+    return subordinates;
   }
 
   throw new AppError(

@@ -1,2839 +1,725 @@
-# Razorpay Reimbursements Management Tool
+# Reimbursement Management Tool (RBAC-Based Backend System)
 
 ## Project Overview
 
-This project is a backend implementation of a Role-Based Access Control (RBAC) driven Reimbursements Management Tool. The system allows employees to raise reimbursement requests and routes those requests through a hierarchical approval workflow involving Reporting Managers (RM), Accounts Payable Executives (APE), and the Chief Financial Officer (CFO).
+The Reimbursement Management Tool is a backend application designed to simulate a real-world organizational reimbursement approval workflow using Role-Based Access Control (RBAC).
 
-The primary focus of the assignment is access control, authorization, and clean backend architecture.
+The system allows employees to create reimbursement requests and routes those requests through a structured approval hierarchy consisting of Reporting Managers (RM), Accounts Payable Executives (APE), and the Chief Financial Officer (CFO).
 
-Current Progress:
-
-* Database Design Completed
-* Database Migrations Completed
-* Seed Script Completed
-* Backend Architecture Setup Completed
-* Authentication Module Completed
-* Authorization Infrastructure Completed
-* Role Assignment Module Completed
-
-The project is being developed incrementally to maintain a clean commit history and demonstrate the thought process behind each implementation decision.
-
----
-
-# Development Timeline
-
-## Phase 1: Requirement Analysis
-
-### Objective
-
-Before writing any code, the assignment requirements were analyzed to identify:
-
-* System actors
-* User roles
-* Access control rules
-* Entity relationships
-* Approval workflows
-* Required APIs
-
-### Identified Roles
-
-| Role | Description                |
-| ---- | -------------------------- |
-| EMP  | Employee                   |
-| RM   | Reporting Manager          |
-| APE  | Accounts Payable Executive |
-| CFO  | Chief Financial Officer    |
-
-### Key Observations
-
-Every new user is registered as an EMP by default.
-
-The CFO acts as the root user of the system.
-
-Only the CFO can assign roles.
-
-Every employee reports to exactly one reporting manager.
-
-Reimbursement approvals require approval from:
-
-1. Reporting Manager
-2. Accounts Payable Executive
-
-before reaching a fully approved state.
-
----
-
-# Phase 2: Database Design
-
-## Objective
-
-Design a database structure capable of supporting:
-
-* User management
-* Role assignment
-* Employee-manager relationships
-* Reimbursement workflows
-* Approval tracking
-
-### Why Database Design Was Done First
-
-A correct database design provides the foundation for:
-
-* Business logic
-* Access control
-* API implementation
-* Data integrity
-
-Changing the database later often causes cascading changes throughout the project.
-
-Therefore the schema was finalized before backend implementation started.
-
----
-
-## Database Tables
-
-### users
-
-Stores all system users.
-
-#### Purpose
-
-Central identity table for:
-
-* Employees
-* Reporting Managers
-* APEs
-* CFO
-
-#### Columns
-
-| Column        | Type      | Purpose              |
-| ------------- | --------- | -------------------- |
-| id            | bigint    | Primary Key          |
-| name          | varchar   | User name            |
-| email         | varchar   | Unique login email   |
-| password_hash | text      | Encrypted password   |
-| role          | varchar   | EMP / RM / APE / CFO |
-| created_at    | timestamp | Record creation time |
-| updated_at    | timestamp | Last update time     |
-
-#### Constraints
-
-Email uniqueness constraint:
-
-```sql
-UNIQUE(email)
-```
-
-Role validation constraint:
-
-```sql
-CHECK(role IN ('EMP','RM','APE','CFO'))
-```
-
-#### Reasoning
-
-Using a single users table simplifies:
+The primary goal of this project is to demonstrate:
 
 * Authentication
 * Authorization
-* User management
+* Role-Based Access Control (RBAC)
+* Hierarchical employee management
+* Multi-stage approval workflows
+* Secure backend architecture
+* Database normalization
+* Production-ready API design
 
-while role differentiation is handled through the role column.
-
----
-
-### employee_manager_mapping
-
-Stores reporting relationships.
-
-#### Purpose
-
-Defines which employee reports to which manager.
-
-#### Business Rule
-
-Each employee must have exactly one reporting manager.
-
-#### Columns
-
-| Column      | Purpose           |
-| ----------- | ----------------- |
-| id          | Primary Key       |
-| employee_id | Employee          |
-| manager_id  | Reporting Manager |
-| created_at  | Timestamp         |
-
-#### Reasoning
-
-Separating reporting relationships into their own table:
-
-* Prevents user table pollution
-* Allows relationship changes without user modifications
-* Supports future hierarchy expansion
+The application follows a layered architecture where responsibilities are clearly separated between routes, validation, controllers, services, middleware, and database layers.
 
 ---
 
-### reimbursements
+# Table of Contents
 
-Stores reimbursement requests raised by employees.
-
-#### Columns
-
-| Column      | Purpose             |
-| ----------- | ------------------- |
-| id          | Primary Key         |
-| employee_id | Request creator     |
-| title       | Reimbursement title |
-| description | Request description |
-| amount      | Requested amount    |
-| created_at  | Timestamp           |
-| updated_at  | Timestamp           |
-
-#### Reasoning
-
-This table stores only reimbursement details.
-
-Approval workflow information is separated to maintain normalization.
+1. Project Overview
+2. Business Requirements
+3. System Roles
+4. System Architecture
+5. Database Design
+6. Authentication System
+7. Authorization System
+8. Employee Management Module
+9. Reimbursement Management Module
+10. API Documentation
+11. Security Implementation
+12. Validation Strategy
+13. Testing Strategy
+14. Current Project Status
+15. Future Improvements
 
 ---
 
-### reimbursement_status
+# Business Requirements
 
-Stores approval decisions.
+The assignment defines an organization where employees submit reimbursement requests that must pass through multiple approval stages before reaching a final decision.
 
-#### Purpose
+The system must enforce organizational hierarchy and role-based access restrictions.
 
-Tracks approval state at multiple organizational levels.
+## Core Business Rules
 
-#### Columns
-
-| Column           | Purpose              |
-| ---------------- | -------------------- |
-| reimbursement_id | Linked reimbursement |
-| rm_status        | RM approval status   |
-| ape_status       | APE approval status  |
-| cfo_status       | CFO approval status  |
-
-#### Status Values
-
-```text
-PENDING
-APPROVED
-REJECTED
-```
-
-#### Reasoning
-
-The assignment requires different actors to participate in the approval process.
-
-Tracking approvals separately allows the system to determine:
-
-* Who approved
-* Who rejected
-* Which stage is pending
+1. Every new user registers as an Employee (EMP).
+2. Only the CFO can assign organizational roles.
+3. Every employee reports to exactly one Reporting Manager.
+4. A Reporting Manager can manage multiple employees.
+5. Only Employees can create reimbursement requests.
+6. Reporting Managers review employee reimbursements first.
+7. Accounts Payable Executives review reimbursements after RM approval.
+8. CFO performs the final review.
+9. Users should only see data permitted by their role.
+10. Organizational hierarchy must be respected when accessing employee and reimbursement information.
 
 ---
 
-# Phase 3: ORM Integration
+# System Roles
 
-## Objective
-
-Connect application code to PostgreSQL using Drizzle ORM.
-
-### Technology Selection
-
-| Technology  | Purpose               |
-| ----------- | --------------------- |
-| PostgreSQL  | Relational Database   |
-| Drizzle ORM | Query Builder and ORM |
-| Drizzle Kit | Migrations            |
-
-### Why Drizzle
-
-Drizzle provides:
-
-* Type-safe schema definitions
-* SQL-like queries
-* Migration support
-* Minimal abstraction over SQL
-
-This allows database operations to remain predictable and easy to debug.
-
----
-
-## Database Connection
-
-Location:
-
-```text
-src/config/db.js
-```
+## Employee (EMP)
 
 Responsibilities:
 
-* Read DATABASE_URL
-* Establish PostgreSQL connection
-* Initialize Drizzle instance
-* Export reusable database object
-
----
-
-# Phase 4: Database Migration System
-
-## Objective
-
-Create reproducible database infrastructure.
-
-### Why Migrations
-
-The assignment requires testers to recreate the database independently.
-
-Instead of manually creating tables:
-
-1. Schema definitions generate migrations
-2. Migrations create database tables automatically
-
-### Commands
-
-Generate migration:
-
-```bash
-npm run db:generate
-```
-
-Apply migration:
-
-```bash
-npm run db:migrate
-```
-
-### Outcome
-
-The entire database structure can now be recreated on any machine.
-
----
-
-# Phase 5: CFO Seed System
-
-## Objective
-
-Create the mandatory root account required by the assignment.
-
-### Seeded User
-
-```text
-Email:
-cfo@org.com
-
-Role:
-CFO
-```
-
-### Why Seeding
-
-The CFO cannot self-register.
-
-The assignment explicitly requires a root account to exist before testing begins.
-
-### Command
-
-```bash
-npm run db:seed-data
-```
-
-### Responsibilities
-
-The seed script:
-
-1. Checks whether CFO already exists.
-2. Creates CFO if missing.
-3. Prevents duplicate CFO records.
-
----
-
-# Phase 6: Backend Architecture
-
-## Objective
-
-Create a scalable folder structure.
-
-### Structure
-
-```text
-src/
-│
-├── modules/
-├── middleware/
-├── utils/
-├── schema/
-├── config/
-├── scripts/
-│
-├── app.js
-└── server.js
-```
-
-### Architectural Goal
-
-Separate:
-
-* Routes
-* Controllers
-* Services
-* Validation
-* Utilities
-
-to maintain clean separation of concerns.
-
----
-
-# Phase 7: Express Server Setup
-
-## Objective
-
-Initialize backend server infrastructure.
-
-### app.js
-
-Responsibilities:
-
-* Express initialization
-* JSON parsing
-* Cookie parsing
-* Route registration
-* Global error handling
-
-### server.js
-
-Responsibilities:
-
-* Load application
-* Start server
-* Listen on configured port
-
-### Result
-
-Application can now receive HTTP requests.
-
----
-
-# Phase 8: Utility Layer
-
-## Objective
-
-Create reusable components used throughout the application.
-
-### ApiResponse
-
-Standardizes API responses.
-
-### AppError
-
-Standardizes application errors.
-
-### generateToken
-
-Centralizes JWT generation.
-
-### Benefits
-
-Reduces duplicate code and keeps response formats consistent.
-
----
-
-# Phase 9: Authentication Module
-
-## Objective
-
-Allow users to:
-
-* Register
+* Register account
 * Login
-* Logout
+* Create reimbursement requests
+* View own reimbursement history
 
-### Endpoints
+Restrictions:
 
-```http
-POST /rest/onboardings/register
-POST /rest/onboardings/login
-POST /rest/onboardings/logout
-```
-
----
-
-## Registration Flow
-
-### Steps
-
-1. Validate request body.
-2. Verify org.com email domain.
-3. Check existing user.
-4. Hash password.
-5. Create user.
-6. Assign default EMP role.
-7. Return success response.
-
-### Security Measures
-
-Passwords are never stored in plaintext.
-
-bcrypt is used for password hashing.
+* Cannot approve reimbursements
+* Cannot assign users
+* Cannot manage employees
 
 ---
 
-## Login Flow
-
-### Steps
-
-1. Validate request.
-2. Find user.
-3. Compare password hash.
-4. Generate JWT.
-5. Store JWT in HTTP-only cookie.
-6. Return success response.
-
-### Security Measures
-
-HTTP-only cookies prevent JavaScript access to authentication tokens.
-
----
-
-## Logout Flow
-
-### Steps
-
-1. Clear authentication cookie.
-2. Return success response.
-
----
-
-# Phase 10: Authorization Infrastructure
-
-## Objective
-
-Protect sensitive APIs.
-
-### auth.middleware.js
+## Reporting Manager (RM)
 
 Responsibilities:
 
-* Read JWT cookie
-* Verify JWT
-* Load user
-* Attach user to request
+* Review employee reimbursements
+* Approve or reject reimbursement requests
+* View direct subordinate information
+* View reimbursement history of assigned employees
 
-### role.middleware.js
+Restrictions:
+
+* Cannot assign roles
+* Cannot assign employees
+* Cannot view employees outside reporting hierarchy
+
+---
+
+## Accounts Payable Executive (APE)
 
 Responsibilities:
 
-* Verify role permissions
-* Restrict endpoint access
+* Review reimbursements approved by Reporting Managers
+* Approve or reject reimbursement requests
+* View organizational employee records
 
-### Example
+Restrictions:
 
-```text
-CFO -> Allowed
-EMP -> Blocked
-```
-
-for role assignment APIs.
+* Cannot assign roles
+* Cannot assign employees
 
 ---
 
-# Phase 11: Role Assignment Module
+## Chief Financial Officer (CFO)
 
-## Objective
+Responsibilities:
 
-Allow the CFO to assign system roles.
+* Assign roles
+* Assign employees to managers
+* Perform final reimbursement review
+* View all users
+* Manage organizational hierarchy
 
-### Endpoint
+Restrictions:
 
-```http
-POST /rest/roles/assign
-```
-
-### Workflow
-
-1. Authenticate user.
-2. Verify CFO role.
-3. Validate payload.
-4. Verify target user exists.
-5. Update role.
-6. Return success response.
-
-### Why This Module Comes First
-
-Every remaining workflow depends on role assignment.
-
-Without RM and APE roles:
-
-* Employee assignment cannot work.
-* Approval workflows cannot work.
-* Reimbursement routing cannot work.
+* CFO account is seeded into the system
+* CFO cannot self-register
 
 ---
 
-# Upcoming Phases
+# System Architecture
 
-The following modules are planned but not yet implemented:
+The project follows a layered backend architecture.
 
-## Employee Assignment Module
+Request Flow:
 
-Endpoints:
-
-```http
-POST /rest/employees/assign
-DELETE /rest/employees/assign
-```
-
-Purpose:
-
-Assign employees to reporting managers.
-
----
-
-## Employee Visibility Module
-
-Endpoint:
-
-```http
-GET /rest/employees
-```
-
-Purpose:
-
-Role-based visibility of users.
+Client Request
+↓
+Route Layer
+↓
+Validation Layer
+↓
+Authentication Middleware
+↓
+Authorization Middleware
+↓
+Controller Layer
+↓
+Service Layer
+↓
+Database Layer
+↓
+Response
 
 ---
 
-## Reimbursement Creation Module
+## Why This Architecture Was Chosen
 
-Endpoint:
+The purpose of separating responsibilities is to make the system easier to maintain, debug, test, and scale.
 
-```http
-POST /rest/reimbursements
-```
-
-Purpose:
-
-Allow employees to create reimbursement requests.
-
----
-
-## Reimbursement Approval Workflow
-
-Endpoint:
-
-```http
-PATCH /rest/reimbursements
-```
-
-Purpose:
-
-Allow RM, APE, and CFO approvals.
-
----
-
-## Reimbursement Visibility Module
-
-Endpoints:
-
-```http
-GET /rest/reimbursements
-GET /rest/reimbursements/:userId
-```
-
-Purpose:
-
-Role-based reimbursement access control.
-
----
-
-# Current Status
-
-| Module                   | Status   |
-| ------------------------ | -------- |
-| Database Design          | Complete |
-| Migrations               | Complete |
-| Seed System              | Complete |
-| Authentication           | Complete |
-| Authorization            | Complete |
-| Role Assignment          | Complete |
-| Employee Assignment      | Pending  |
-| Employee Listing         | Pending  |
-| Reimbursement Creation   | Pending  |
-| Reimbursement Approval   | Pending  |
-| Reimbursement Visibility | Pending  |
-| Testing                  | Pending  |
-| Deployment               | Pending  |
-
-
-# Phase 12: Employee-Manager Relationship Module
-
-## Objective
-
-Implement organizational hierarchy management by allowing the Chief Financial Officer (CFO) to assign employees to reporting managers.
-
-This phase establishes the reporting structure required for the reimbursement approval workflow.
-
-Without this relationship mapping, the system cannot determine:
-
-* Which Reporting Manager should review an employee's reimbursement.
-* Which employees belong to a specific Reporting Manager.
-* Which reimbursements should be visible to a Reporting Manager.
-* Whether reimbursement visibility rules are being respected.
-
-This module serves as the bridge between user management and reimbursement workflows.
-
----
-
-## Business Requirement Analysis
-
-The assignment defines the following organizational rules:
-
-* Every employee reports to exactly one Reporting Manager.
-* A Reporting Manager can manage multiple employees.
-* Only the CFO can create or remove reporting relationships.
-* Employees cannot be assigned directly to APEs.
-* Employees cannot be assigned directly to the CFO.
-
-From these requirements, the employee-manager mapping system was designed.
-
----
-
-## Database Design Review
-
-### employee_manager_mapping
-
-The relationship table was already created during the database design phase.
-
-#### Structure
-
-| Column      | Purpose                 |
-| ----------- | ----------------------- |
-| id          | Primary Key             |
-| employee_id | Employee being assigned |
-| manager_id  | Reporting Manager       |
-| created_at  | Assignment timestamp    |
-
-#### Important Constraint
-
-```sql
-employee_id UNIQUE
-```
-
-This constraint enforces the assignment rule:
-
-> One employee can only report to one manager at a time.
-
-This rule is enforced at the database level rather than relying solely on application logic.
-
-This prevents accidental duplicate assignments even if application validation fails.
-
----
-
-## Module Structure
-
-The employee module follows the same layered architecture used throughout the project.
-
-```text
-employees/
-├── employees.routes.js
-├── employees.controller.js
-├── employees.service.js
-└── employees.validation.js
-```
-
-### Responsibilities
-
-#### Validation Layer
-
-Responsible for:
-
-* Request body validation
-* Required field validation
-* Self-assignment prevention
-
-#### Controller Layer
-
-Responsible for:
-
-* Receiving HTTP requests
-* Invoking service functions
-* Returning API responses
-
-#### Service Layer
-
-Responsible for:
-
-* Database operations
-* Business rule enforcement
-* Relationship management
-
-#### Route Layer
+### Route Layer
 
 Responsible for:
 
 * Endpoint registration
-* Authentication middleware
-* Authorization middleware
+* Middleware attachment
+* Request routing
+
+### Validation Layer
+
+Responsible for:
+
+* Request validation
+* Input sanitization
+* Preventing invalid data
+
+### Controller Layer
+
+Responsible for:
+
+* Receiving requests
+* Calling services
+* Returning standardized responses
+
+Controllers contain no business logic.
+
+### Service Layer
+
+Responsible for:
+
+* Business rules
+* Workflow implementation
+* Database operations
+
+All major application logic exists in the service layer.
+
+### Middleware Layer
+
+Responsible for:
+
+* Authentication
+* Authorization
+* Request protection
+
+### Database Layer
+
+Responsible for:
+
+* Data persistence
+* Constraints
+* Relationships
+* Transaction safety
 
 ---
 
-# Endpoint 1: Assign Employee
+# Project Structure
 
-## Route
-
-```http
-POST /rest/employees/assign
-```
-
-## Authorization
-
-Only CFO users are allowed to access this endpoint.
-
-Request flow:
-
-```text
-Request
-   ↓
-Authentication Middleware
-   ↓
-Role Authorization Middleware
-   ↓
-Controller
-   ↓
-Service Layer
-   ↓
-Database
-```
-
----
-
-## Request Body
-
-```json
-{
-  "employeeId": 5,
-  "managerId": 2
-}
-```
-
----
-
-## Validation Rules
-
-Before creating a relationship, several checks are performed.
-
-### Rule 1
-
-Both employeeId and managerId must exist.
-
-Example:
-
-```json
-{
-  "employeeId": 5,
-  "managerId": 2
-}
-```
-
-Valid.
+src/
+│
+├── app/
+│
+├── auth/
+│ ├── auth.routes.js
+│ ├── auth.controller.js
+│ ├── auth.service.js
+│ └── auth.validation.js
+│
+├── roles/
+│ ├── roles.routes.js
+│ ├── roles.controller.js
+│ ├── roles.service.js
+│ └── roles.validation.js
+│
+├── employees/
+│ ├── employees.routes.js
+│ ├── employees.controller.js
+│ ├── employees.service.js
+│ └── employees.validation.js
+│
+├── reimbursements/
+│ ├── reimbursements.routes.js
+│ ├── reimbursements.controller.js
+│ ├── reimbursements.service.js
+│ └── reimbursements.validation.js
+│
+├── middleware/
+│ ├── auth.middleware.js
+│ └── role.middleware.js
+│
+├── utils/
+│ ├── ApiResponse.js
+│ ├── AppError.js
+│ ├── generateToken.js
+│ └── reimbursementStatus.js
+│
+├── config/
+│ └── db.js
+│
+├── schema/
+│
+├── scripts/
+│ └── seed.js
+│
+├── app.js
+└── server.js
 
 ---
 
-### Rule 2
+# Database Design
 
-Employee cannot report to themselves.
+The database was designed before API implementation to ensure all business rules could be enforced consistently.
 
-Invalid:
+## Database Design Goals
 
-```json
-{
-  "employeeId": 5,
-  "managerId": 5
-}
-```
-
-Reason:
-
-A reporting hierarchy cannot contain self-references.
+* Maintain normalization
+* Prevent duplicate data
+* Enforce organizational hierarchy
+* Support reimbursement workflows
+* Support RBAC
 
 ---
 
-### Rule 3
+## Users Table
 
-Employee must exist.
+Purpose:
 
-System verifies:
+Stores all users in the organization.
 
-```sql
-SELECT * FROM users
-WHERE id = employeeId
-```
+Columns:
 
----
+* id
+* name
+* email
+* password_hash
+* role_id
+* created_at
+* updated_at
 
-### Rule 4
+Constraints:
 
-Manager must exist.
-
-System verifies:
-
-```sql
-SELECT * FROM users
-WHERE id = managerId
-```
+* Unique email
+* Required role
 
 ---
 
-### Rule 5
+## Roles Table
 
-Assigned employee must have role EMP.
+Purpose:
 
-Valid:
+Stores system roles.
 
-```text
-EMP
-```
+Example Records:
 
-Invalid:
+* EMP
+* RM
+* APE
+* CFO
 
-```text
-RM
-APE
-CFO
-```
+Benefits:
 
-Reason:
-
-Only employees can be assigned to reporting managers.
+* Centralized role management
+* Improved normalization
+* Easier role expansion
 
 ---
 
-### Rule 6
+## Employee Manager Mapping Table
 
-Target manager must have role RM.
+Purpose:
 
-Valid:
+Stores reporting relationships.
 
-```text
-RM
-```
+Columns:
 
-Invalid:
+* id
+* employee_id
+* manager_id
+* created_at
 
-```text
-EMP
-APE
-CFO
-```
+Business Rule:
 
-Reason:
+One employee can only have one reporting manager.
 
-Only Reporting Managers are allowed to manage employees.
+Constraint:
 
----
-
-### Rule 7
-
-Employee must not already have a manager.
-
-System checks:
-
-```sql
-SELECT *
-FROM employee_manager_mapping
-WHERE employee_id = ?
-```
-
-If a record exists:
-
-Assignment is rejected.
+employee_id UNIQUE
 
 ---
 
-## Assignment Workflow
+## Status Table
 
-### Step 1
+Purpose:
 
-Validate request payload.
+Stores reimbursement approval states.
 
-### Step 2
+Possible Values:
 
-Verify employee exists.
+* PENDING
+* APPROVED
+* REJECTED
 
-### Step 3
+Benefits:
 
-Verify manager exists.
-
-### Step 4
-
-Verify employee role is EMP.
-
-### Step 5
-
-Verify manager role is RM.
-
-### Step 6
-
-Verify employee is not already assigned.
-
-### Step 7
-
-Insert relationship.
-
-```sql
-INSERT INTO employee_manager_mapping
-(
- employee_id,
- manager_id
-)
-VALUES
-(
- employeeId,
- managerId
-)
-```
-
-### Step 8
-
-Return success response.
+* Centralized status management
+* Consistent workflow transitions
 
 ---
 
-## Success Response
+## Reimbursements Table
 
-```json
-{
-  "status": "success",
-  "message": "Employee assigned successfully"
-}
-```
+Purpose:
 
----
+Stores reimbursement requests.
 
-# Endpoint 2: Remove Employee Assignment
+Columns:
 
-## Route
+* id
+* employee_id
+* status_id
+* title
+* description
+* amount
+* created_at
+* updated_at
 
-```http
-DELETE /rest/employees/assign
-```
+Relationships:
 
----
+employee_id → users.id
 
-## Authorization
-
-Only CFO users are allowed to access this endpoint.
+status_id → reimbursement_status.id
 
 ---
 
-## Request Body
+# Authentication System
 
-```json
-{
-  "employeeId": 5,
-  "managerId": 2
-}
-```
+The authentication system allows users to register, login, and logout securely.
 
----
+## Registration Workflow
 
-## Validation
+1. Validate request body
+2. Verify email domain
+3. Check duplicate user
+4. Hash password
+5. Create user
+6. Assign EMP role
+7. Return response
 
-System verifies:
+Security:
 
-1. employeeId exists.
-2. managerId exists.
-3. Mapping exists.
+Passwords are never stored in plaintext.
 
----
+bcrypt is used for hashing.
 
-## Removal Workflow
+## Login Workflow
 
-### Step 1
+1. Validate request
+2. Verify user
+3. Compare password hash
+4. Generate JWT
+5. Store JWT in HTTP-only cookie
+6. Return response
 
-Locate mapping.
+Benefits:
 
-```sql
-SELECT *
-FROM employee_manager_mapping
-WHERE employee_id = ?
-AND manager_id = ?
-```
+* Stateless authentication
+* Secure session handling
+* Reduced token exposure
 
-### Step 2
+## Logout Workflow
 
-Delete mapping.
-
-```sql
-DELETE
-FROM employee_manager_mapping
-WHERE employee_id = ?
-AND manager_id = ?
-```
-
-### Step 3
-
-Return success response.
+1. Clear authentication cookie
+2. Return success response
 
 ---
 
-## Success Response
+# Authorization System
 
-```json
-{
-  "status": "success",
-  "message": "Employee unassigned successfully"
-}
-```
-
----
-
-# Security Implementation
-
-The employee assignment module is protected by two middleware layers.
+Authorization is implemented using dedicated middleware.
 
 ## Authentication Middleware
 
 Responsibilities:
 
-* Read JWT from cookie.
-* Verify JWT signature.
-* Extract user identity.
-* Load user from database.
-* Attach user to request object.
-
-Result:
-
-```js
-req.user = {
-  id,
-  email,
-  role
-}
-```
-
----
-
-## Authorization Middleware
-
-Responsibilities:
-
-Verify user role before endpoint execution.
+* Read JWT cookie
+* Verify token
+* Load user
+* Attach user to request
 
 Example:
 
-```js
+req.user = {
+id,
+email,
+role
+}
+
+---
+
+## Role Authorization Middleware
+
+Responsibilities:
+
+* Verify user role
+* Restrict endpoint access
+
+Example:
+
 authorize("CFO")
-```
 
-If role is not CFO:
+Only CFO users can access protected endpoints.
 
-```http
-403 Forbidden
-```
+---
 
-is returned.
+# Employee Management Module
 
-This ensures only CFO users can manage organizational hierarchy.
+## Role Assignment
+
+Endpoint:
+
+POST /rest/roles/assign
+
+Only CFO users can assign organizational roles.
+
+Workflow:
+
+1. Authenticate user
+2. Verify CFO role
+3. Validate request
+4. Verify target user
+5. Update role
+6. Return response
+
+---
+
+## Employee Assignment
+
+Endpoint:
+
+POST /rest/employees/assign
+
+Purpose:
+
+Assign employees to reporting managers.
+
+Validation:
+
+* Employee exists
+* Manager exists
+* Employee role = EMP
+* Manager role = RM
+* Employee not already assigned
+
+---
+
+## Employee Visibility
+
+Endpoint:
+
+GET /rest/employees
+
+Visibility Rules:
+
+CFO → All users
+
+APE → EMP + RM
+
+RM → Direct subordinates only
+
+EMP → No access
+
+---
+
+# Reimbursement Management Module
+
+## Reimbursement Lifecycle
+
+EMP
+↓
+RM Review
+↓
+APE Review
+↓
+CFO Review
+
+---
+
+## Reimbursement Creation
+
+Endpoint:
+
+POST /rest/reimbursements
+
+Access:
+
+EMP only
+
+Workflow:
+
+1. Validate request
+2. Create approval status
+3. Create reimbursement record
+4. Link status
+5. Return response
+
+Initial Status:
+
+RM = PENDING
+
+APE = PENDING
+
+CFO = PENDING
+
+---
+
+## Reimbursement Approval
+
+Endpoint:
+
+PATCH /rest/reimbursements
+
+Access:
+
+RM
+
+APE
+
+CFO
+
+Workflow Order:
+
+RM → APE → CFO
+
+Rules:
+
+APE cannot approve before RM.
+
+CFO cannot approve before APE.
+
+Any rejection immediately terminates workflow.
+
+---
+
+## Reimbursement Visibility
+
+Endpoint:
+
+GET /rest/reimbursements
+
+Employee:
+
+Only own reimbursements.
+
+RM:
+
+Only direct subordinate reimbursements pending RM review.
+
+APE:
+
+Only RM-approved reimbursements pending APE review.
+
+CFO:
+
+Only APE-approved reimbursements pending CFO review.
+
+---
+
+# API Documentation
+
+Authentication
+
+POST /rest/onboardings/register
+
+POST /rest/onboardings/login
+
+POST /rest/onboardings/logout
+
+Role Management
+
+POST /rest/roles/assign
+
+Employee Management
+
+POST /rest/employees/assign
+
+DELETE /rest/employees/assign
+
+GET /rest/employees
+
+Reimbursements
+
+POST /rest/reimbursements
+
+PATCH /rest/reimbursements
+
+GET /rest/reimbursements
+
+GET /rest/reimbursements/:userId
+
+---
+
+# Security Implementation
+
+## Password Security
+
+* bcrypt hashing
+* No plaintext storage
+
+## Authentication Security
+
+* JWT tokens
+* HTTP-only cookies
+
+## Authorization Security
+
+* Role verification
+* Hierarchy verification
+
+## Database Security
+
+* Foreign keys
+* Unique constraints
+* Check constraints
 
 ---
 
 # Testing Strategy
 
-The module was tested using the following scenarios.
+Authentication Tests
 
-## Positive Tests
+* Register user
+* Login user
+* Logout user
 
-### Scenario 1
+Authorization Tests
 
-Assign EMP to RM.
+* Protected endpoints
+* Role restrictions
 
-Expected:
+Employee Module Tests
 
-Assignment succeeds.
+* Assign employee
+* Remove assignment
+* Employee visibility
 
----
+Reimbursement Tests
 
-### Scenario 2
+* Create reimbursement
+* Approve reimbursement
+* Reject reimbursement
+* Visibility rules
 
-Remove existing assignment.
+Security Tests
 
-Expected:
-
-Assignment removed successfully.
-
----
-
-## Negative Tests
-
-### Scenario 1
-
-Employee assigned twice.
-
-Expected:
-
-Assignment rejected.
-
----
-
-### Scenario 2
-
-Employee reports to themselves.
-
-Expected:
-
-Assignment rejected.
-
----
-
-### Scenario 3
-
-Manager role is not RM.
-
-Expected:
-
-Assignment rejected.
-
----
-
-### Scenario 4
-
-Employee role is not EMP.
-
-Expected:
-
-Assignment rejected.
-
----
-
-### Scenario 5
-
-Non-CFO user accesses endpoint.
-
-Expected:
-
-403 Forbidden.
-
----
-
-# Architectural Significance
-
-This module is the first implementation of organizational hierarchy.
-
-It introduces:
-
-* Relationship management
-* Multi-level authorization
-* Hierarchical ownership
-
-The reporting structure created here becomes the foundation for:
-
-1. Employee visibility APIs.
-2. Reimbursement visibility APIs.
-3. Reimbursement approval routing.
-4. Manager-specific dashboards.
-
-Without this module, the reimbursement workflow cannot determine ownership or approval responsibility.
+* Unauthorized access
+* Invalid tokens
+* Duplicate assignments
 
 ---
 
 # Current Project Status
-
-| Module                   | Status   |
-| ------------------------ | -------- |
-| Database Design          | Complete |
-| Migrations               | Complete |
-| Seed System              | Complete |
-| Authentication           | Complete |
-| Authorization            | Complete |
-| Role Assignment          | Complete |
-| Employee Assignment      | Complete |
-| Employee Visibility      | Pending  |
-| Reimbursement Creation   | Pending  |
-| Reimbursement Approval   | Pending  |
-| Reimbursement Visibility | Pending  |
-| Testing Suite            | Pending  |
-| Deployment               | Pending  |
-
----
-
-# Next Phase
-
-Phase 13 will implement:
-
-```http
-GET /rest/employees
-```
-
-This endpoint introduces role-based visibility rules where:
-
-* EMP cannot access employee listings.
-* RM can only view direct subordinates.
-* APE can view all EMP and RM users.
-* CFO can view all users.
-
-This will be the first endpoint that fully demonstrates RBAC-driven data visibility.
-
-
-# Phase 13: Employee Visibility Module (RBAC Data Access)
-
-## Objective
-
-Implement role-based employee visibility rules.
-
-While the previous modules focused on authentication, authorization, and organizational hierarchy creation, this phase introduces the first endpoint where users receive different datasets based on their role.
-
-This is the first practical demonstration of Role-Based Access Control (RBAC) from a data visibility perspective.
-
----
-
-## Business Requirement Analysis
-
-The assignment defines the following visibility rules:
-
-| Role | Visibility                       |
-| ---- | -------------------------------- |
-| EMP  | No access                        |
-| RM   | Only employees reporting to them |
-| APE  | All EMPs and RMs                 |
-| CFO  | All users                        |
-
-The challenge is not simply protecting the endpoint.
-
-The challenge is ensuring different users receive different datasets even though they are calling the same endpoint.
-
----
-
-## Endpoint
-
-```http
-GET /rest/employees
-```
-
----
-
-## Security Architecture
-
-### Authentication Layer
-
-Every request must pass through:
-
-```text
-authenticate()
-```
-
-Responsibilities:
-
-* Verify JWT cookie.
-* Verify token validity.
-* Load user from database.
-* Attach user to request object.
-
-Example:
-
-```js
-req.user = {
-  id: 5,
-  role: "RM",
-  email: "manager@org.com"
-}
-```
-
----
-
-### Authorization Layer
-
-The endpoint is protected by:
-
-```js
-authorize(
-  "RM",
-  "APE",
-  "CFO"
-)
-```
-
-This ensures:
-
-```text
-EMP
-```
-
-users cannot access the endpoint.
-
----
-
-## Service Layer Design
-
-The service implementation follows role-driven branching.
-
-Pseudo workflow:
-
-```text
-Current User
-      │
-      ▼
-Check Role
-      │
-      ├── CFO
-      │      ▼
-      │   Return All Users
-      │
-      ├── APE
-      │      ▼
-      │ Return EMP + RM
-      │
-      └── RM
-             ▼
-      Return Subordinates
-```
-
----
-
-## CFO Visibility Logic
-
-### Requirement
-
-The CFO can view every user in the organization.
-
-### Database Query
-
-```sql
-SELECT *
-FROM users
-```
-
-### Returned Users
-
-```text
-EMP
-RM
-APE
-CFO
-```
-
-### Reasoning
-
-The CFO acts as the root administrative account and therefore requires unrestricted visibility.
-
----
-
-## APE Visibility Logic
-
-### Requirement
-
-APE users can view:
-
-```text
-EMP
-RM
-```
-
-but not:
-
-```text
-APE
-CFO
-```
-
-### Database Query
-
-```sql
-SELECT *
-FROM users
-WHERE role IN ('EMP','RM')
-```
-
-### Reasoning
-
-The Accounts Payable Executive participates in reimbursement approvals but is not responsible for managing administrative accounts.
-
-Restricting visibility follows the principle of least privilege.
-
----
-
-## RM Visibility Logic
-
-### Requirement
-
-Reporting Managers can only view employees directly assigned to them.
-
-### Example Structure
-
-```text
-RM (ID = 2)
-
-├── EMP 5
-├── EMP 7
-└── EMP 10
-```
-
-Expected result:
-
-```text
-EMP 5
-EMP 7
-EMP 10
-```
-
-No other users should be visible.
-
----
-
-### Query Strategy
-
-The implementation uses a join between:
-
-```text
-users
-```
-
-and
-
-```text
-employee_manager_mapping
-```
-
-The query filters records using:
-
-```sql
-manager_id = currentUser.id
-```
-
-This guarantees managers only see direct subordinates.
-
----
-
-## Controller Responsibilities
-
-The controller is intentionally lightweight.
-
-Responsibilities:
-
-1. Receive request.
-2. Read authenticated user.
-3. Call service layer.
-4. Return standardized response.
-
-No business logic exists inside the controller.
-
-This follows separation-of-concerns principles.
-
----
-
-## Response Structure
-
-Successful response:
-
-```json
-{
-  "status": "success",
-  "message": "Employees fetched successfully",
-  "data": {
-    "users": [
-      {
-        "userId": 1,
-        "name": "John Doe",
-        "email": "john@org.com",
-        "role": "EMP"
-      }
-    ]
-  }
-}
-```
-
----
-
-## Testing Strategy
-
-### Test 1
-
-Login as CFO.
-
-Request:
-
-```http
-GET /rest/employees
-```
-
-Expected:
-
-All users returned.
-
----
-
-### Test 2
-
-Login as APE.
-
-Request:
-
-```http
-GET /rest/employees
-```
-
-Expected:
-
-Only EMP and RM users returned.
-
----
-
-### Test 3
-
-Login as RM.
-
-Request:
-
-```http
-GET /rest/employees
-```
-
-Expected:
-
-Only assigned subordinates returned.
-
----
-
-### Test 4
-
-Login as EMP.
-
-Request:
-
-```http
-GET /rest/employees
-```
-
-Expected:
-
-```http
-403 Forbidden
-```
-
----
-
-## Architectural Importance
-
-This module is the first implementation where authorization affects returned data rather than merely granting or denying access.
-
-The same endpoint behaves differently based on:
-
-* User role
-* Organizational hierarchy
-* Reporting relationships
-
-This pattern becomes the foundation for reimbursement visibility and approval workflows.
-
----
-
-# Phase 14: Reimbursement Creation Module
-
-## Objective
-
-Allow employees to create reimbursement requests.
-
-This module introduces the first core business workflow of the application.
-
-Until this phase, the system focused primarily on:
-
-* User management
-* Authentication
-* Authorization
-* Organizational hierarchy
-
-This phase introduces financial records and approval workflows.
-
----
-
-## Business Requirement
-
-Only employees are allowed to create reimbursement requests.
-
-The assignment explicitly restricts creation to:
-
-```text
-EMP
-```
-
-The following roles are not allowed:
-
-```text
-RM
-APE
-CFO
-```
-
----
-
-## Endpoint
-
-```http
-POST /rest/reimbursements
-```
-
----
-
-## Module Structure
-
-```text
-reimbursements/
-├── reimbursements.routes.js
-├── reimbursements.controller.js
-├── reimbursements.service.js
-└── reimbursements.validation.js
-```
-
----
-
-## Request Validation
-
-Required fields:
-
-```json
-{
-  "title": "...",
-  "description": "...",
-  "amount": 1500
-}
-```
-
-Validation checks:
-
-### Rule 1
-
-Title must exist.
-
-### Rule 2
-
-Description must exist.
-
-### Rule 3
-
-Amount must exist.
-
-### Rule 4
-
-Amount must be greater than zero.
-
-Example:
-
-```json
-{
-  "amount": -100
-}
-```
-
-Rejected.
-
----
-
-## Database Design Consideration
-
-The project uses a dedicated approval tracking table:
-
-```text
-reimbursement_status
-```
-
-This means reimbursement creation happens in two stages.
-
-### Stage 1
-
-Create approval status record.
-
-Initial state:
-
-| RM      | APE     | CFO     |
-| ------- | ------- | ------- |
-| PENDING | PENDING | PENDING |
-
----
-
-### Stage 2
-
-Create reimbursement record.
-
-The reimbursement stores:
-
-```text
-status_id
-```
-
-which references the newly created approval tracking row.
-
----
-
-## Creation Workflow
-
-### Step 1
-
-Employee submits reimbursement.
-
-### Step 2
-
-Validate request.
-
-### Step 3
-
-Create approval status record.
-
-### Step 4
-
-Create reimbursement record.
-
-### Step 5
-
-Link reimbursement to status record.
-
-### Step 6
-
-Return success response.
-
----
-
-## Initial State
-
-Every newly created reimbursement begins as:
-
-```text
-RM  = PENDING
-APE = PENDING
-CFO = PENDING
-```
-
-No approval decisions exist yet.
-
----
-
-## Security
-
-Route protection:
-
-```js
-authenticate()
-authorize("EMP")
-```
-
-This ensures:
-
-* Only authenticated users can access the endpoint.
-* Only EMP users can create requests.
-
----
-
-## Example Request
-
-```json
-{
-  "title": "Travel Expense",
-  "description": "Client Meeting Travel",
-  "amount": 1500
-}
-```
-
----
-
-## Example Response
-
-```json
-{
-  "status": "success",
-  "message": "Reimbursement created successfully"
-}
-```
-
----
-
-## Testing Strategy
-
-### Test 1
-
-Login as EMP.
-
-Create reimbursement.
-
-Expected:
-
-Request succeeds.
-
----
-
-### Test 2
-
-Login as RM.
-
-Create reimbursement.
-
-Expected:
-
-403 Forbidden.
-
----
-
-### Test 3
-
-Login as APE.
-
-Create reimbursement.
-
-Expected:
-
-403 Forbidden.
-
----
-
-### Test 4
-
-Login as CFO.
-
-Create reimbursement.
-
-Expected:
-
-403 Forbidden.
-
----
-
-## Architectural Importance
-
-This module introduces the first entity that moves through the organizational hierarchy.
-
-Future phases will build on top of this reimbursement record and implement:
-
-* Approval workflow
-* Visibility rules
-* Final status determination
-
----
-
-# Phase 15: Reimbursement Approval Workflow
-
-## Objective
-
-Implement multi-stage reimbursement approval.
-
-This is the most business-critical module in the project.
-
-The reimbursement approval workflow is responsible for:
-
-* Recording approval decisions.
-* Recording rejection decisions.
-* Enforcing approval order.
-* Determining reimbursement progression through the organization.
-
----
-
-## Endpoint
-
-```http
-PATCH /rest/reimbursements
-```
-
----
-
-## Business Workflow
-
-Organization flow:
-
-```text
-EMP
- ↓
-RM
- ↓
-APE
- ↓
-CFO
-```
-
----
-
-### Initial State
-
-When created:
-
-| RM      | APE     | CFO     |
-| ------- | ------- | ------- |
-| PENDING | PENDING | PENDING |
-
----
-
-### RM Approval
-
-After RM approves:
-
-| RM       | APE     | CFO     |
-| -------- | ------- | ------- |
-| APPROVED | PENDING | PENDING |
-
----
-
-### APE Approval
-
-After APE approves:
-
-| RM       | APE      | CFO     |
-| -------- | -------- | ------- |
-| APPROVED | APPROVED | PENDING |
-
-At this point the reimbursement is considered approved from the employee's perspective.
-
-This follows the assignment specification.
-
----
-
-### CFO Approval
-
-After CFO approves:
-
-| RM       | APE      | CFO      |
-| -------- | -------- | -------- |
-| APPROVED | APPROVED | APPROVED |
-
----
-
-### Rejection
-
-A rejection at any stage immediately terminates the workflow.
-
-Example:
-
-| RM       | APE     | CFO     |
-| -------- | ------- | ------- |
-| REJECTED | PENDING | PENDING |
-
-Result:
-
-```text
-REJECTED
-```
-
----
-
-## Request Payload
-
-```json
-{
-  "reimbursementId": 1,
-  "status": "APPROVED"
-}
-```
-
-Supported statuses:
-
-```text
-APPROVED
-REJECTED
-```
-
----
-
-## Workflow Enforcement
-
-### RM
-
-Can directly approve or reject.
-
----
-
-### APE
-
-Can only act after RM approval.
-
-If RM has not approved:
-
-Request rejected.
-
----
-
-### CFO
-
-Can only act after APE approval.
-
-If APE has not approved:
-
-Request rejected.
-
----
-
-## Security
-
-Route protection:
-
-```js
-authenticate()
-
-authorize(
-  "RM",
-  "APE",
-  "CFO"
-)
-```
-
-Employees cannot access approval endpoints.
-
----
-
-## Validation Rules
-
-### Rule 1
-
-Reimbursement must exist.
-
-### Rule 2
-
-Status record must exist.
-
-### Rule 3
-
-Status must be:
-
-```text
-APPROVED
-REJECTED
-```
-
-### Rule 4
-
-Workflow order must be respected.
-
----
-
-## Testing Strategy
-
-### Scenario 1
-
-RM approves.
-
-Expected:
-
-RM status updated.
-
----
-
-### Scenario 2
-
-APE approves before RM.
-
-Expected:
-
-Request rejected.
-
----
-
-### Scenario 3
-
-CFO approves before APE.
-
-Expected:
-
-Request rejected.
-
----
-
-### Scenario 4
-
-APE approves after RM.
-
-Expected:
-
-Approval succeeds.
-
----
-
-### Scenario 5
-
-CFO approves after APE.
-
-Expected:
-
-Approval succeeds.
-
----
-
-## Architectural Importance
-
-This module transforms reimbursements from static records into workflow-driven entities.
-
-It introduces:
-
-* State transitions
-* Approval sequencing
-* Role-driven actions
-* Workflow enforcement
-
-The next phase will expose these workflow states through role-specific reimbursement visibility APIs.
-
----
-
-# Updated Project Status
-
-| Module                   | Status   |
-| ------------------------ | -------- |
-| Database Design          | Complete |
-| Migrations               | Complete |
-| Seed System              | Complete |
-| Authentication           | Complete |
-| Authorization            | Complete |
-| Role Assignment          | Complete |
-| Employee Assignment      | Complete |
-| Employee Visibility      | Complete |
-| Reimbursement Creation   | Complete |
-| Reimbursement Approval   | Complete |
-| Reimbursement Visibility | Pending  |
-| Testing Suite            | Pending  |
-| Deployment               | Pending  |
-
----
-
-# Next Phase
-
-Phase 16:
-
-```http
-GET /rest/reimbursements
-GET /rest/reimbursements/:userId
-```
-
-This phase will complete the reimbursement workflow and implement the final RBAC visibility rules defined in the assignment.
-
-
-# Phase 16: Reimbursement Visibility Module
-
-## Objective
-
-Implement role-based reimbursement visibility.
-
-This phase completes the reimbursement workflow by determining which reimbursement records are visible to different users based on:
-
-* Organizational hierarchy
-* User role
-* Approval state
-* Reporting relationships
-
-This is the final major RBAC component of the application.
-
----
-
-## Business Requirement Analysis
-
-The assignment requires different users to view different reimbursement datasets even when accessing the same endpoint.
-
-Visibility depends on:
-
-1. User role.
-2. Approval status.
-3. Employee-manager relationship.
-
-The endpoint therefore acts as a workflow queue for each role.
-
----
-
-# Endpoint 1: Get Reimbursements
-
-## Route
-
-```http
-GET /rest/reimbursements
-```
-
----
-
-## Endpoint Behavior
-
-The response changes depending on the authenticated user's role.
-
-The endpoint does not return the same data to every user.
-
-Instead, the returned dataset is dynamically calculated.
-
----
-
-# EMP Visibility Rules
-
-## Requirement
-
-Employees can only view their own reimbursement requests.
-
-Example:
-
-```text
-Employee ID = 5
-```
-
-Visible:
-
-```text
-Reimbursements belonging to Employee 5
-```
-
-Not Visible:
-
-```text
-Reimbursements belonging to any other employee
-```
-
----
-
-## Query Strategy
-
-The system:
-
-1. Fetches reimbursements.
-2. Filters records by:
-
-```text
-employeeId = currentUser.id
-```
-
----
-
-## Returned Information
-
-For each reimbursement:
-
-```json
-{
-  "title": "...",
-  "description": "...",
-  "amount": 1500,
-  "status": "APPROVED"
-}
-```
-
----
-
-## Derived Status Logic
-
-The assignment requires employees to see a final reimbursement status rather than internal approval details.
-
-A helper utility was created:
-
-```text
-utils/reimbursementStatus.js
-```
-
----
-
-### Final Status Calculation
-
-#### REJECTED
-
-If any actor rejects:
-
-```text
-RM
-APE
-CFO
-```
-
-Final status becomes:
-
-```text
-REJECTED
-```
-
----
-
-#### APPROVED
-
-If:
-
-```text
-RM = APPROVED
-APE = APPROVED
-```
-
-Final status becomes:
-
-```text
-APPROVED
-```
-
-CFO approval is not required for employee-facing approval status.
-
----
-
-#### Otherwise
-
-Status remains:
-
-```text
-PENDING
-```
-
----
-
-# RM Visibility Rules
-
-## Requirement
-
-Reporting Managers should only see reimbursement requests requiring their action.
-
-Visible:
-
-```text
-Direct subordinate reimbursements
-```
-
-where:
-
-```text
-rmStatus = PENDING
-```
-
----
-
-## Example
-
-Organization:
-
-```text
-RM 2
-
-├── EMP 5
-├── EMP 7
-└── EMP 10
-```
-
-Visible reimbursements:
-
-```text
-EMP 5 reimbursement
-EMP 7 reimbursement
-EMP 10 reimbursement
-```
-
-Only if:
-
-```text
-rmStatus = PENDING
-```
-
----
-
-## Query Strategy
-
-Step 1
-
-Retrieve employees assigned to the RM.
-
-```text
-employee_manager_mapping
-```
-
----
-
-Step 2
-
-Retrieve reimbursements belonging to those employees.
-
----
-
-Step 3
-
-Return only reimbursements where:
-
-```text
-rmStatus = PENDING
-```
-
----
-
-## Purpose
-
-This endpoint functions as the Reporting Manager approval queue.
-
----
-
-# APE Visibility Rules
-
-## Requirement
-
-Accounts Payable Executives should only see reimbursements that have already been approved by a Reporting Manager.
-
-Visible:
-
-```text
-RM Approved
-APE Pending
-```
-
----
-
-## Example
-
-Visible:
-
-| RM       | APE     |
-| -------- | ------- |
-| APPROVED | PENDING |
-
----
-
-Not Visible:
-
-| RM      | APE     |
-| ------- | ------- |
-| PENDING | PENDING |
-
----
-
-## Query Strategy
-
-Return reimbursements where:
-
-```text
-rmStatus = APPROVED
-apeStatus = PENDING
-```
-
----
-
-## Purpose
-
-This endpoint functions as the Accounts Payable approval queue.
-
----
-
-# CFO Visibility Rules
-
-## Requirement
-
-The CFO should only see reimbursements that have already been approved by the Accounts Payable Executive.
-
-Visible:
-
-```text
-APE Approved
-CFO Pending
-```
-
----
-
-## Example
-
-Visible:
-
-| RM       | APE      | CFO     |
-| -------- | -------- | ------- |
-| APPROVED | APPROVED | PENDING |
-
----
-
-Not Visible:
-
-| RM       | APE     | CFO     |
-| -------- | ------- | ------- |
-| APPROVED | PENDING | PENDING |
-
----
-
-## Query Strategy
-
-Return reimbursements where:
-
-```text
-apeStatus = APPROVED
-cfoStatus = PENDING
-```
-
----
-
-## Purpose
-
-This endpoint functions as the CFO review queue.
-
----
-
-# Endpoint 2: Get Reimbursements By Employee
-
-## Route
-
-```http
-GET /rest/reimbursements/:userId
-```
-
----
-
-## Objective
-
-Allow Reporting Managers to view reimbursement history for specific employees.
-
----
-
-## Authorization
-
-Only:
-
-```text
-RM
-```
-
-can access this endpoint.
-
----
-
-## Additional Restriction
-
-A Reporting Manager can only access reimbursements belonging to employees directly assigned to them.
-
----
-
-## Example
-
-Organization:
-
-```text
-RM 2
-
-└── EMP 5
-```
-
-Allowed:
-
-```http
-GET /rest/reimbursements/5
-```
-
----
-
-Example:
-
-```text
-RM 2
-
-EMP 99 belongs to RM 8
-```
-
-Forbidden:
-
-```http
-GET /rest/reimbursements/99
-```
-
----
-
-## Validation Workflow
-
-### Step 1
-
-Verify current user is RM.
-
----
-
-### Step 2
-
-Verify employee belongs to RM.
-
-Query:
-
-```text
-employee_manager_mapping
-```
-
----
-
-### Step 3
-
-Retrieve employee reimbursements.
-
----
-
-### Step 4
-
-Return response.
-
----
-
-## Security Significance
-
-This prevents managers from viewing reimbursement history outside their reporting structure.
-
-The organizational hierarchy therefore acts as a visibility boundary.
-
----
-
-# Controller Responsibilities
-
-Two controller functions were introduced:
-
-```text
-getReimbursements()
-
-getReimbursementsByUser()
-```
-
-Responsibilities:
-
-* Receive request.
-* Call service layer.
-* Return standardized response.
-* Forward errors to global middleware.
-
-No business logic is implemented inside controllers.
-
----
-
-# Service Layer Responsibilities
-
-Two service functions were introduced:
-
-```text
-getReimbursementsService()
-
-getReimbursementsByUserService()
-```
-
-Responsibilities:
-
-* Apply visibility rules.
-* Validate reporting relationships.
-* Filter reimbursement records.
-* Calculate employee-facing reimbursement status.
-
----
-
-# Security Model
-
-All routes are protected by:
-
-```text
-Authentication Middleware
-```
-
-Additional role restrictions are applied where necessary.
-
-Example:
-
-```js
-authorize("RM")
-```
-
-for employee-specific reimbursement visibility.
-
----
-
-# Testing Strategy
-
-## EMP Tests
-
-### Scenario
-
-Employee requests:
-
-```http
-GET /rest/reimbursements
-```
-
-Expected:
-
-Only own reimbursements returned.
-
----
-
-## RM Tests
-
-### Scenario
-
-Manager requests:
-
-```http
-GET /rest/reimbursements
-```
-
-Expected:
-
-Only pending reimbursements from direct reports.
-
----
-
-## APE Tests
-
-### Scenario
-
-APE requests:
-
-```http
-GET /rest/reimbursements
-```
-
-Expected:
-
-Only RM-approved reimbursements.
-
----
-
-## CFO Tests
-
-### Scenario
-
-CFO requests:
-
-```http
-GET /rest/reimbursements
-```
-
-Expected:
-
-Only APE-approved reimbursements.
-
----
-
-## RM Employee History Tests
-
-### Scenario
-
-RM requests:
-
-```http
-GET /rest/reimbursements/:userId
-```
-
-for assigned employee.
-
-Expected:
-
-Success.
-
----
-
-### Scenario
-
-RM requests:
-
-```http
-GET /rest/reimbursements/:userId
-```
-
-for employee belonging to another manager.
-
-Expected:
-
-403 Forbidden.
-
----
-
-# Architectural Importance
-
-This phase completes the reimbursement workflow.
-
-The system now supports:
-
-1. Reimbursement creation.
-2. Multi-stage approval.
-3. Role-specific approval queues.
-4. Hierarchical visibility controls.
-5. Employee-facing status tracking.
-
-The entire reimbursement lifecycle is now represented within the application.
-
----
-
-# Updated Project Status
 
 | Module                   | Status   |
 | ------------------------ | -------- |
@@ -2854,15 +740,41 @@ The entire reimbursement lifecycle is now represented within the application.
 
 ---
 
-# Next Phase
+# Future Improvements
 
-Phase 17 will focus on:
+1. Audit Logs
 
-* Edge case handling
-* Validation hardening
-* Workflow integrity checks
-* Duplicate approval prevention
-* Additional authorization safeguards
-* Production readiness review
+2. Email Notifications
 
-At this stage, all major assignment functionality has been implemented.
+3. Approval Comments
+
+4. File Upload Support
+
+5. Docker Deployment
+
+6. CI/CD Pipeline
+
+7. Automated Testing
+
+8. Activity Tracking
+
+9. Advanced Reporting
+
+10. Multi-Level Manager Hierarchy
+
+---
+
+# Conclusion
+
+This project demonstrates a complete RBAC-driven reimbursement management workflow implemented using modern backend development practices.
+
+The system successfully combines:
+
+* Authentication
+* Authorization
+* Organizational hierarchy management
+* Multi-stage approval workflows
+* Role-based visibility controls
+* Secure API architecture
+
+while maintaining clean separation of concerns and scalability for future enhancements.
