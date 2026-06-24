@@ -217,6 +217,7 @@ Responsible for:
 
 # Project Structure
 
+```
 src/
 │
 ├── app/
@@ -266,7 +267,7 @@ src/
 ├── app.js
 └── server.js
 
----
+```
 
 # Database Design
 
