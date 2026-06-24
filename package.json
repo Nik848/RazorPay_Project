@@ -1,0 +1,22 @@
+{
+  "name": "razorpay-reimbursement-database",
+  "version": "1.0.0",
+  "description": "Database Schema Design Phase for Razorpay Reimbursement Assignment",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "seed": "node src/scripts/seed.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.30.10",
+    "postgres": "^3.4.4"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.21.2"
+  },
+  "author": "",
+  "license": "ISC"
+}
