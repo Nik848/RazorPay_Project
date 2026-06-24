@@ -16,6 +16,11 @@ import {
   updateReimbursement,
 } from "./reimbursements.controller.js";
 
+import {
+  getReimbursements,
+  getReimbursementsByUser,
+} from "./reimbursements.controller.js";
+
 const router = Router();
 
 router.post(
@@ -34,6 +39,19 @@ router.patch(
     "CFO"
   ),
   updateReimbursement
+);
+
+router.get(
+  "/",
+  authenticate,
+  getReimbursements
+);
+
+router.get(
+  "/:userId",
+  authenticate,
+  authorize("RM"),
+  getReimbursementsByUser
 );
 
 export default router;

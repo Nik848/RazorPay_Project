@@ -1277,3 +1277,1592 @@ This endpoint introduces role-based visibility rules where:
 * CFO can view all users.
 
 This will be the first endpoint that fully demonstrates RBAC-driven data visibility.
+
+
+# Phase 13: Employee Visibility Module (RBAC Data Access)
+
+## Objective
+
+Implement role-based employee visibility rules.
+
+While the previous modules focused on authentication, authorization, and organizational hierarchy creation, this phase introduces the first endpoint where users receive different datasets based on their role.
+
+This is the first practical demonstration of Role-Based Access Control (RBAC) from a data visibility perspective.
+
+---
+
+## Business Requirement Analysis
+
+The assignment defines the following visibility rules:
+
+| Role | Visibility                       |
+| ---- | -------------------------------- |
+| EMP  | No access                        |
+| RM   | Only employees reporting to them |
+| APE  | All EMPs and RMs                 |
+| CFO  | All users                        |
+
+The challenge is not simply protecting the endpoint.
+
+The challenge is ensuring different users receive different datasets even though they are calling the same endpoint.
+
+---
+
+## Endpoint
+
+```http
+GET /rest/employees
+```
+
+---
+
+## Security Architecture
+
+### Authentication Layer
+
+Every request must pass through:
+
+```text
+authenticate()
+```
+
+Responsibilities:
+
+* Verify JWT cookie.
+* Verify token validity.
+* Load user from database.
+* Attach user to request object.
+
+Example:
+
+```js
+req.user = {
+  id: 5,
+  role: "RM",
+  email: "manager@org.com"
+}
+```
+
+---
+
+### Authorization Layer
+
+The endpoint is protected by:
+
+```js
+authorize(
+  "RM",
+  "APE",
+  "CFO"
+)
+```
+
+This ensures:
+
+```text
+EMP
+```
+
+users cannot access the endpoint.
+
+---
+
+## Service Layer Design
+
+The service implementation follows role-driven branching.
+
+Pseudo workflow:
+
+```text
+Current User
+      │
+      ▼
+Check Role
+      │
+      ├── CFO
+      │      ▼
+      │   Return All Users
+      │
+      ├── APE
+      │      ▼
+      │ Return EMP + RM
+      │
+      └── RM
+             ▼
+      Return Subordinates
+```
+
+---
+
+## CFO Visibility Logic
+
+### Requirement
+
+The CFO can view every user in the organization.
+
+### Database Query
+
+```sql
+SELECT *
+FROM users
+```
+
+### Returned Users
+
+```text
+EMP
+RM
+APE
+CFO
+```
+
+### Reasoning
+
+The CFO acts as the root administrative account and therefore requires unrestricted visibility.
+
+---
+
+## APE Visibility Logic
+
+### Requirement
+
+APE users can view:
+
+```text
+EMP
+RM
+```
+
+but not:
+
+```text
+APE
+CFO
+```
+
+### Database Query
+
+```sql
+SELECT *
+FROM users
+WHERE role IN ('EMP','RM')
+```
+
+### Reasoning
+
+The Accounts Payable Executive participates in reimbursement approvals but is not responsible for managing administrative accounts.
+
+Restricting visibility follows the principle of least privilege.
+
+---
+
+## RM Visibility Logic
+
+### Requirement
+
+Reporting Managers can only view employees directly assigned to them.
+
+### Example Structure
+
+```text
+RM (ID = 2)
+
+├── EMP 5
+├── EMP 7
+└── EMP 10
+```
+
+Expected result:
+
+```text
+EMP 5
+EMP 7
+EMP 10
+```
+
+No other users should be visible.
+
+---
+
+### Query Strategy
+
+The implementation uses a join between:
+
+```text
+users
+```
+
+and
+
+```text
+employee_manager_mapping
+```
+
+The query filters records using:
+
+```sql
+manager_id = currentUser.id
+```
+
+This guarantees managers only see direct subordinates.
+
+---
+
+## Controller Responsibilities
+
+The controller is intentionally lightweight.
+
+Responsibilities:
+
+1. Receive request.
+2. Read authenticated user.
+3. Call service layer.
+4. Return standardized response.
+
+No business logic exists inside the controller.
+
+This follows separation-of-concerns principles.
+
+---
+
+## Response Structure
+
+Successful response:
+
+```json
+{
+  "status": "success",
+  "message": "Employees fetched successfully",
+  "data": {
+    "users": [
+      {
+        "userId": 1,
+        "name": "John Doe",
+        "email": "john@org.com",
+        "role": "EMP"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## Testing Strategy
+
+### Test 1
+
+Login as CFO.
+
+Request:
+
+```http
+GET /rest/employees
+```
+
+Expected:
+
+All users returned.
+
+---
+
+### Test 2
+
+Login as APE.
+
+Request:
+
+```http
+GET /rest/employees
+```
+
+Expected:
+
+Only EMP and RM users returned.
+
+---
+
+### Test 3
+
+Login as RM.
+
+Request:
+
+```http
+GET /rest/employees
+```
+
+Expected:
+
+Only assigned subordinates returned.
+
+---
+
+### Test 4
+
+Login as EMP.
+
+Request:
+
+```http
+GET /rest/employees
+```
+
+Expected:
+
+```http
+403 Forbidden
+```
+
+---
+
+## Architectural Importance
+
+This module is the first implementation where authorization affects returned data rather than merely granting or denying access.
+
+The same endpoint behaves differently based on:
+
+* User role
+* Organizational hierarchy
+* Reporting relationships
+
+This pattern becomes the foundation for reimbursement visibility and approval workflows.
+
+---
+
+# Phase 14: Reimbursement Creation Module
+
+## Objective
+
+Allow employees to create reimbursement requests.
+
+This module introduces the first core business workflow of the application.
+
+Until this phase, the system focused primarily on:
+
+* User management
+* Authentication
+* Authorization
+* Organizational hierarchy
+
+This phase introduces financial records and approval workflows.
+
+---
+
+## Business Requirement
+
+Only employees are allowed to create reimbursement requests.
+
+The assignment explicitly restricts creation to:
+
+```text
+EMP
+```
+
+The following roles are not allowed:
+
+```text
+RM
+APE
+CFO
+```
+
+---
+
+## Endpoint
+
+```http
+POST /rest/reimbursements
+```
+
+---
+
+## Module Structure
+
+```text
+reimbursements/
+├── reimbursements.routes.js
+├── reimbursements.controller.js
+├── reimbursements.service.js
+└── reimbursements.validation.js
+```
+
+---
+
+## Request Validation
+
+Required fields:
+
+```json
+{
+  "title": "...",
+  "description": "...",
+  "amount": 1500
+}
+```
+
+Validation checks:
+
+### Rule 1
+
+Title must exist.
+
+### Rule 2
+
+Description must exist.
+
+### Rule 3
+
+Amount must exist.
+
+### Rule 4
+
+Amount must be greater than zero.
+
+Example:
+
+```json
+{
+  "amount": -100
+}
+```
+
+Rejected.
+
+---
+
+## Database Design Consideration
+
+The project uses a dedicated approval tracking table:
+
+```text
+reimbursement_status
+```
+
+This means reimbursement creation happens in two stages.
+
+### Stage 1
+
+Create approval status record.
+
+Initial state:
+
+| RM      | APE     | CFO     |
+| ------- | ------- | ------- |
+| PENDING | PENDING | PENDING |
+
+---
+
+### Stage 2
+
+Create reimbursement record.
+
+The reimbursement stores:
+
+```text
+status_id
+```
+
+which references the newly created approval tracking row.
+
+---
+
+## Creation Workflow
+
+### Step 1
+
+Employee submits reimbursement.
+
+### Step 2
+
+Validate request.
+
+### Step 3
+
+Create approval status record.
+
+### Step 4
+
+Create reimbursement record.
+
+### Step 5
+
+Link reimbursement to status record.
+
+### Step 6
+
+Return success response.
+
+---
+
+## Initial State
+
+Every newly created reimbursement begins as:
+
+```text
+RM  = PENDING
+APE = PENDING
+CFO = PENDING
+```
+
+No approval decisions exist yet.
+
+---
+
+## Security
+
+Route protection:
+
+```js
+authenticate()
+authorize("EMP")
+```
+
+This ensures:
+
+* Only authenticated users can access the endpoint.
+* Only EMP users can create requests.
+
+---
+
+## Example Request
+
+```json
+{
+  "title": "Travel Expense",
+  "description": "Client Meeting Travel",
+  "amount": 1500
+}
+```
+
+---
+
+## Example Response
+
+```json
+{
+  "status": "success",
+  "message": "Reimbursement created successfully"
+}
+```
+
+---
+
+## Testing Strategy
+
+### Test 1
+
+Login as EMP.
+
+Create reimbursement.
+
+Expected:
+
+Request succeeds.
+
+---
+
+### Test 2
+
+Login as RM.
+
+Create reimbursement.
+
+Expected:
+
+403 Forbidden.
+
+---
+
+### Test 3
+
+Login as APE.
+
+Create reimbursement.
+
+Expected:
+
+403 Forbidden.
+
+---
+
+### Test 4
+
+Login as CFO.
+
+Create reimbursement.
+
+Expected:
+
+403 Forbidden.
+
+---
+
+## Architectural Importance
+
+This module introduces the first entity that moves through the organizational hierarchy.
+
+Future phases will build on top of this reimbursement record and implement:
+
+* Approval workflow
+* Visibility rules
+* Final status determination
+
+---
+
+# Phase 15: Reimbursement Approval Workflow
+
+## Objective
+
+Implement multi-stage reimbursement approval.
+
+This is the most business-critical module in the project.
+
+The reimbursement approval workflow is responsible for:
+
+* Recording approval decisions.
+* Recording rejection decisions.
+* Enforcing approval order.
+* Determining reimbursement progression through the organization.
+
+---
+
+## Endpoint
+
+```http
+PATCH /rest/reimbursements
+```
+
+---
+
+## Business Workflow
+
+Organization flow:
+
+```text
+EMP
+ ↓
+RM
+ ↓
+APE
+ ↓
+CFO
+```
+
+---
+
+### Initial State
+
+When created:
+
+| RM      | APE     | CFO     |
+| ------- | ------- | ------- |
+| PENDING | PENDING | PENDING |
+
+---
+
+### RM Approval
+
+After RM approves:
+
+| RM       | APE     | CFO     |
+| -------- | ------- | ------- |
+| APPROVED | PENDING | PENDING |
+
+---
+
+### APE Approval
+
+After APE approves:
+
+| RM       | APE      | CFO     |
+| -------- | -------- | ------- |
+| APPROVED | APPROVED | PENDING |
+
+At this point the reimbursement is considered approved from the employee's perspective.
+
+This follows the assignment specification.
+
+---
+
+### CFO Approval
+
+After CFO approves:
+
+| RM       | APE      | CFO      |
+| -------- | -------- | -------- |
+| APPROVED | APPROVED | APPROVED |
+
+---
+
+### Rejection
+
+A rejection at any stage immediately terminates the workflow.
+
+Example:
+
+| RM       | APE     | CFO     |
+| -------- | ------- | ------- |
+| REJECTED | PENDING | PENDING |
+
+Result:
+
+```text
+REJECTED
+```
+
+---
+
+## Request Payload
+
+```json
+{
+  "reimbursementId": 1,
+  "status": "APPROVED"
+}
+```
+
+Supported statuses:
+
+```text
+APPROVED
+REJECTED
+```
+
+---
+
+## Workflow Enforcement
+
+### RM
+
+Can directly approve or reject.
+
+---
+
+### APE
+
+Can only act after RM approval.
+
+If RM has not approved:
+
+Request rejected.
+
+---
+
+### CFO
+
+Can only act after APE approval.
+
+If APE has not approved:
+
+Request rejected.
+
+---
+
+## Security
+
+Route protection:
+
+```js
+authenticate()
+
+authorize(
+  "RM",
+  "APE",
+  "CFO"
+)
+```
+
+Employees cannot access approval endpoints.
+
+---
+
+## Validation Rules
+
+### Rule 1
+
+Reimbursement must exist.
+
+### Rule 2
+
+Status record must exist.
+
+### Rule 3
+
+Status must be:
+
+```text
+APPROVED
+REJECTED
+```
+
+### Rule 4
+
+Workflow order must be respected.
+
+---
+
+## Testing Strategy
+
+### Scenario 1
+
+RM approves.
+
+Expected:
+
+RM status updated.
+
+---
+
+### Scenario 2
+
+APE approves before RM.
+
+Expected:
+
+Request rejected.
+
+---
+
+### Scenario 3
+
+CFO approves before APE.
+
+Expected:
+
+Request rejected.
+
+---
+
+### Scenario 4
+
+APE approves after RM.
+
+Expected:
+
+Approval succeeds.
+
+---
+
+### Scenario 5
+
+CFO approves after APE.
+
+Expected:
+
+Approval succeeds.
+
+---
+
+## Architectural Importance
+
+This module transforms reimbursements from static records into workflow-driven entities.
+
+It introduces:
+
+* State transitions
+* Approval sequencing
+* Role-driven actions
+* Workflow enforcement
+
+The next phase will expose these workflow states through role-specific reimbursement visibility APIs.
+
+---
+
+# Updated Project Status
+
+| Module                   | Status   |
+| ------------------------ | -------- |
+| Database Design          | Complete |
+| Migrations               | Complete |
+| Seed System              | Complete |
+| Authentication           | Complete |
+| Authorization            | Complete |
+| Role Assignment          | Complete |
+| Employee Assignment      | Complete |
+| Employee Visibility      | Complete |
+| Reimbursement Creation   | Complete |
+| Reimbursement Approval   | Complete |
+| Reimbursement Visibility | Pending  |
+| Testing Suite            | Pending  |
+| Deployment               | Pending  |
+
+---
+
+# Next Phase
+
+Phase 16:
+
+```http
+GET /rest/reimbursements
+GET /rest/reimbursements/:userId
+```
+
+This phase will complete the reimbursement workflow and implement the final RBAC visibility rules defined in the assignment.
+
+
+# Phase 16: Reimbursement Visibility Module
+
+## Objective
+
+Implement role-based reimbursement visibility.
+
+This phase completes the reimbursement workflow by determining which reimbursement records are visible to different users based on:
+
+* Organizational hierarchy
+* User role
+* Approval state
+* Reporting relationships
+
+This is the final major RBAC component of the application.
+
+---
+
+## Business Requirement Analysis
+
+The assignment requires different users to view different reimbursement datasets even when accessing the same endpoint.
+
+Visibility depends on:
+
+1. User role.
+2. Approval status.
+3. Employee-manager relationship.
+
+The endpoint therefore acts as a workflow queue for each role.
+
+---
+
+# Endpoint 1: Get Reimbursements
+
+## Route
+
+```http
+GET /rest/reimbursements
+```
+
+---
+
+## Endpoint Behavior
+
+The response changes depending on the authenticated user's role.
+
+The endpoint does not return the same data to every user.
+
+Instead, the returned dataset is dynamically calculated.
+
+---
+
+# EMP Visibility Rules
+
+## Requirement
+
+Employees can only view their own reimbursement requests.
+
+Example:
+
+```text
+Employee ID = 5
+```
+
+Visible:
+
+```text
+Reimbursements belonging to Employee 5
+```
+
+Not Visible:
+
+```text
+Reimbursements belonging to any other employee
+```
+
+---
+
+## Query Strategy
+
+The system:
+
+1. Fetches reimbursements.
+2. Filters records by:
+
+```text
+employeeId = currentUser.id
+```
+
+---
+
+## Returned Information
+
+For each reimbursement:
+
+```json
+{
+  "title": "...",
+  "description": "...",
+  "amount": 1500,
+  "status": "APPROVED"
+}
+```
+
+---
+
+## Derived Status Logic
+
+The assignment requires employees to see a final reimbursement status rather than internal approval details.
+
+A helper utility was created:
+
+```text
+utils/reimbursementStatus.js
+```
+
+---
+
+### Final Status Calculation
+
+#### REJECTED
+
+If any actor rejects:
+
+```text
+RM
+APE
+CFO
+```
+
+Final status becomes:
+
+```text
+REJECTED
+```
+
+---
+
+#### APPROVED
+
+If:
+
+```text
+RM = APPROVED
+APE = APPROVED
+```
+
+Final status becomes:
+
+```text
+APPROVED
+```
+
+CFO approval is not required for employee-facing approval status.
+
+---
+
+#### Otherwise
+
+Status remains:
+
+```text
+PENDING
+```
+
+---
+
+# RM Visibility Rules
+
+## Requirement
+
+Reporting Managers should only see reimbursement requests requiring their action.
+
+Visible:
+
+```text
+Direct subordinate reimbursements
+```
+
+where:
+
+```text
+rmStatus = PENDING
+```
+
+---
+
+## Example
+
+Organization:
+
+```text
+RM 2
+
+├── EMP 5
+├── EMP 7
+└── EMP 10
+```
+
+Visible reimbursements:
+
+```text
+EMP 5 reimbursement
+EMP 7 reimbursement
+EMP 10 reimbursement
+```
+
+Only if:
+
+```text
+rmStatus = PENDING
+```
+
+---
+
+## Query Strategy
+
+Step 1
+
+Retrieve employees assigned to the RM.
+
+```text
+employee_manager_mapping
+```
+
+---
+
+Step 2
+
+Retrieve reimbursements belonging to those employees.
+
+---
+
+Step 3
+
+Return only reimbursements where:
+
+```text
+rmStatus = PENDING
+```
+
+---
+
+## Purpose
+
+This endpoint functions as the Reporting Manager approval queue.
+
+---
+
+# APE Visibility Rules
+
+## Requirement
+
+Accounts Payable Executives should only see reimbursements that have already been approved by a Reporting Manager.
+
+Visible:
+
+```text
+RM Approved
+APE Pending
+```
+
+---
+
+## Example
+
+Visible:
+
+| RM       | APE     |
+| -------- | ------- |
+| APPROVED | PENDING |
+
+---
+
+Not Visible:
+
+| RM      | APE     |
+| ------- | ------- |
+| PENDING | PENDING |
+
+---
+
+## Query Strategy
+
+Return reimbursements where:
+
+```text
+rmStatus = APPROVED
+apeStatus = PENDING
+```
+
+---
+
+## Purpose
+
+This endpoint functions as the Accounts Payable approval queue.
+
+---
+
+# CFO Visibility Rules
+
+## Requirement
+
+The CFO should only see reimbursements that have already been approved by the Accounts Payable Executive.
+
+Visible:
+
+```text
+APE Approved
+CFO Pending
+```
+
+---
+
+## Example
+
+Visible:
+
+| RM       | APE      | CFO     |
+| -------- | -------- | ------- |
+| APPROVED | APPROVED | PENDING |
+
+---
+
+Not Visible:
+
+| RM       | APE     | CFO     |
+| -------- | ------- | ------- |
+| APPROVED | PENDING | PENDING |
+
+---
+
+## Query Strategy
+
+Return reimbursements where:
+
+```text
+apeStatus = APPROVED
+cfoStatus = PENDING
+```
+
+---
+
+## Purpose
+
+This endpoint functions as the CFO review queue.
+
+---
+
+# Endpoint 2: Get Reimbursements By Employee
+
+## Route
+
+```http
+GET /rest/reimbursements/:userId
+```
+
+---
+
+## Objective
+
+Allow Reporting Managers to view reimbursement history for specific employees.
+
+---
+
+## Authorization
+
+Only:
+
+```text
+RM
+```
+
+can access this endpoint.
+
+---
+
+## Additional Restriction
+
+A Reporting Manager can only access reimbursements belonging to employees directly assigned to them.
+
+---
+
+## Example
+
+Organization:
+
+```text
+RM 2
+
+└── EMP 5
+```
+
+Allowed:
+
+```http
+GET /rest/reimbursements/5
+```
+
+---
+
+Example:
+
+```text
+RM 2
+
+EMP 99 belongs to RM 8
+```
+
+Forbidden:
+
+```http
+GET /rest/reimbursements/99
+```
+
+---
+
+## Validation Workflow
+
+### Step 1
+
+Verify current user is RM.
+
+---
+
+### Step 2
+
+Verify employee belongs to RM.
+
+Query:
+
+```text
+employee_manager_mapping
+```
+
+---
+
+### Step 3
+
+Retrieve employee reimbursements.
+
+---
+
+### Step 4
+
+Return response.
+
+---
+
+## Security Significance
+
+This prevents managers from viewing reimbursement history outside their reporting structure.
+
+The organizational hierarchy therefore acts as a visibility boundary.
+
+---
+
+# Controller Responsibilities
+
+Two controller functions were introduced:
+
+```text
+getReimbursements()
+
+getReimbursementsByUser()
+```
+
+Responsibilities:
+
+* Receive request.
+* Call service layer.
+* Return standardized response.
+* Forward errors to global middleware.
+
+No business logic is implemented inside controllers.
+
+---
+
+# Service Layer Responsibilities
+
+Two service functions were introduced:
+
+```text
+getReimbursementsService()
+
+getReimbursementsByUserService()
+```
+
+Responsibilities:
+
+* Apply visibility rules.
+* Validate reporting relationships.
+* Filter reimbursement records.
+* Calculate employee-facing reimbursement status.
+
+---
+
+# Security Model
+
+All routes are protected by:
+
+```text
+Authentication Middleware
+```
+
+Additional role restrictions are applied where necessary.
+
+Example:
+
+```js
+authorize("RM")
+```
+
+for employee-specific reimbursement visibility.
+
+---
+
+# Testing Strategy
+
+## EMP Tests
+
+### Scenario
+
+Employee requests:
+
+```http
+GET /rest/reimbursements
+```
+
+Expected:
+
+Only own reimbursements returned.
+
+---
+
+## RM Tests
+
+### Scenario
+
+Manager requests:
+
+```http
+GET /rest/reimbursements
+```
+
+Expected:
+
+Only pending reimbursements from direct reports.
+
+---
+
+## APE Tests
+
+### Scenario
+
+APE requests:
+
+```http
+GET /rest/reimbursements
+```
+
+Expected:
+
+Only RM-approved reimbursements.
+
+---
+
+## CFO Tests
+
+### Scenario
+
+CFO requests:
+
+```http
+GET /rest/reimbursements
+```
+
+Expected:
+
+Only APE-approved reimbursements.
+
+---
+
+## RM Employee History Tests
+
+### Scenario
+
+RM requests:
+
+```http
+GET /rest/reimbursements/:userId
+```
+
+for assigned employee.
+
+Expected:
+
+Success.
+
+---
+
+### Scenario
+
+RM requests:
+
+```http
+GET /rest/reimbursements/:userId
+```
+
+for employee belonging to another manager.
+
+Expected:
+
+403 Forbidden.
+
+---
+
+# Architectural Importance
+
+This phase completes the reimbursement workflow.
+
+The system now supports:
+
+1. Reimbursement creation.
+2. Multi-stage approval.
+3. Role-specific approval queues.
+4. Hierarchical visibility controls.
+5. Employee-facing status tracking.
+
+The entire reimbursement lifecycle is now represented within the application.
+
+---
+
+# Updated Project Status
+
+| Module                   | Status   |
+| ------------------------ | -------- |
+| Database Design          | Complete |
+| Migrations               | Complete |
+| Seed System              | Complete |
+| Authentication           | Complete |
+| Authorization            | Complete |
+| Role Assignment          | Complete |
+| Employee Assignment      | Complete |
+| Employee Visibility      | Complete |
+| Reimbursement Creation   | Complete |
+| Reimbursement Approval   | Complete |
+| Reimbursement Visibility | Complete |
+| Testing Suite            | Pending  |
+| Postman Collection       | Pending  |
+| Deployment               | Pending  |
+
+---
+
+# Next Phase
+
+Phase 17 will focus on:
+
+* Edge case handling
+* Validation hardening
+* Workflow integrity checks
+* Duplicate approval prevention
+* Additional authorization safeguards
+* Production readiness review
+
+At this stage, all major assignment functionality has been implemented.

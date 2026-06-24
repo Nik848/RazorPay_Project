@@ -1,4 +1,5 @@
 import { ApiResponse } from "../../utils/ApiResponse.js";
+import { AppError } from "../../utils/AppError.js";
 
 import {
   validateCreateReimbursement,
@@ -14,6 +15,11 @@ import {
 
 import {
   updateReimbursementService,
+} from "./reimbursements.service.js";
+
+import {
+  getReimbursementsService,
+  getReimbursementsByUserService,
 } from "./reimbursements.service.js";
 
 export const createReimbursement =
@@ -111,3 +117,61 @@ export const updateReimbursement =
       next(error);
     }
   };
+
+export const getReimbursements = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const reimbursements =
+      await getReimbursementsService(
+        req.user
+      );
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        "Reimbursements fetched successfully",
+        {
+          reimbursements,
+        }
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getReimbursementsByUser =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+      const employeeId = Number(
+        req.params.userId
+      );
+
+      const reimbursements =
+        await getReimbursementsByUserService(
+          employeeId,
+          req.user
+        );
+
+      return res.status(200).json(
+        new ApiResponse(
+          200,
+          "Reimbursements fetched successfully",
+          {
+            reimbursements,
+          }
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  

@@ -2,7 +2,7 @@ export const validateCreateReimbursement = ({
   title,
   description,
   amount,
-}) => {
+} = {}) => {
   if (
     !title ||
     !description ||
@@ -32,7 +32,7 @@ export const validateCreateReimbursement = ({
 export const validateUpdateReimbursement = ({
   reimbursementId,
   status,
-}) => {
+} = {}) => {
   if (!reimbursementId || !status) {
     return {
       isValid: false,
