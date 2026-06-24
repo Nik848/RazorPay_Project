@@ -9,6 +9,10 @@ import { authenticate } from "../../middleware/auth.middleware.js";
 
 import { authorize } from "../../middleware/role.middleware.js";
 
+import {
+  getEmployees,
+} from "./employees.controller.js";
+
 const router = Router();
 
 router.post(
@@ -23,6 +27,17 @@ router.delete(
   authenticate,
   authorize("CFO"),
   unassignEmployee
+);
+
+router.get(
+  "/",
+  authenticate,
+  authorize(
+    "RM",
+    "APE",
+    "CFO"
+  ),
+  getEmployees
 );
 
 export default router;

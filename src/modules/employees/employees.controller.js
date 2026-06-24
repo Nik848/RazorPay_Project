@@ -11,6 +11,8 @@ import {
   unassignEmployeeService,
 } from "./employees.service.js";
 
+import { getEmployeesService } from "./employees.service.js";
+
 export const assignEmployee = async (
   req,
   res,
@@ -76,6 +78,31 @@ export const unassignEmployee = async (
       new ApiResponse(
         200,
         result.message
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getEmployees = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const users =
+      await getEmployeesService(
+        req.user
+      );
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        "Employees fetched successfully",
+        {
+          users,
+        }
       )
     );
   } catch (error) {

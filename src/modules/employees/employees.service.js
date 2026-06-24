@@ -8,6 +8,8 @@ import { employeeManagerMapping } from "../../schema/employee-manager.schema.js"
 
 import { AppError } from "../../utils/AppError.js";
 
+import { inArray } from "drizzle-orm";
+
 export const assignEmployeeService = async (
   employeeId,
   managerId
@@ -129,3 +131,84 @@ export const unassignEmployeeService =
         "Employee unassigned successfully",
     };
   };
+
+export const getEmployeesService = async (
+  currentUser
+) => {
+  /*
+    CFO:
+    Can see everybody.
+  */
+  if (currentUser.role === "CFO") {
+    const allUsers = await db
+      .select({
+        userId: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+      })
+      .from(users);
+
+    return allUsers;
+  }
+
+  /*
+    APE:
+    Can see EMP and RM only.
+  */
+  if (currentUser.role === "APE") {
+    const visibleUsers = await db
+      .select({
+        userId: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+      })
+      .from(users)
+      .where(
+        inArray(
+          users.role,
+          ["EMP", "RM"]
+        )
+      );
+
+    return visibleUsers;
+  }
+
+  /*
+    RM:
+    Can see only direct subordinates.
+  */
+  if (currentUser.role === "RM") {
+    const subordinates = await db
+      .select({
+        userId: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+      })
+      .from(employeeManagerMapping)
+      .innerJoin(
+        users,
+        eq(
+          users.id,
+          employeeManagerMapping.employeeId
+        )
+      )
+      .where(
+        eq(
+          employeeManagerMapping.managerId,
+          currentUser.id
+        )
+      );
+
+    return subordinates.map(
+      (record) => record.users
+    );
+  }
+
+  throw new AppError(
+    "Access denied",
+    403
+  );
+};
