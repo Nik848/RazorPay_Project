@@ -1,4 +1,4 @@
-export const validateRegister = ({ name, email, password }) => {
+export const validateRegister = ({ name, email, password } = {}) => {
   if (!name || !email || !password) {
     return {
       isValid: false,
@@ -25,7 +25,7 @@ export const validateRegister = ({ name, email, password }) => {
   };
 };
 
-export const validateLogin = ({ email, password }) => {
+export const validateLogin = ({ email, password } = {}) => {
   if (!email || !password) {
     return {
       isValid: false,
