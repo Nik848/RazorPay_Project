@@ -69,65 +69,37 @@ export const createReimbursement =
   };
 
 
-export const updateReimbursement =
-  async (
-    req,
-    res,
-    next
-  ) => {
+export const updateReimbursement = async (req,res,next) => {
     try {
-      const validation =
-        validateUpdateReimbursement(
-          req.body
-        );
+      const validation = validateUpdateReimbursement(req.body);
 
-      if (
-        !validation.isValid
-      ) {
-        return res
-          .status(400)
-          .json({
+      if (!validation.isValid) {
+        return res.status(400).json({
             status: "error",
-            message:
-              validation.message,
+            message: validation.message,
           });
       }
 
-      const {
+      const {reimbursementId,status} = req.body;
+
+      const result = await updateReimbursementService(
         reimbursementId,
         status,
-      } = req.body;
+        req.user
+      );
 
-      const result =
-        await updateReimbursementService(
-          reimbursementId,
-          status,
-          req.user
-        );
-
-      return res
-        .status(200)
-        .json(
-          new ApiResponse(
-            200,
-            result.message
-          )
-        );
+      return res.status(200).json(
+        new ApiResponse(200,result.message)
+      );
     } catch (error) {
       next(error);
     }
   };
 
-export const getReimbursements = async (
-  req,
-  res,
-  next
-) => {
+export const getReimbursements = async (req,res,next) => {
   try {
     const reimbursements =
-      await getReimbursementsService(
-        req.user
-      );
+      await getReimbursementsService(req.user);
 
     return res.status(200).json(
       new ApiResponse(
@@ -143,16 +115,9 @@ export const getReimbursements = async (
   }
 };
 
-export const getReimbursementsByUser =
-  async (
-    req,
-    res,
-    next
-  ) => {
+export const getReimbursementsByUser = async (req,res,next) => {
     try {
-      const employeeId = Number(
-        req.params.userId
-      );
+      const employeeId = Number(req.params.userId);
 
       const reimbursements =
         await getReimbursementsByUserService(
@@ -173,5 +138,3 @@ export const getReimbursementsByUser =
       next(error);
     }
   };
-
-  

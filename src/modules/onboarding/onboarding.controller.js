@@ -40,7 +40,6 @@ export const login = async (req, res, next) => {
 
     const token = generateToken({
       id: user.id,
-      role: user.role,
     });
 
     res.cookie("auth", token, {

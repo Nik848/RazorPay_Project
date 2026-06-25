@@ -10,15 +10,10 @@ export const authenticate = async (req, res, next) => {
     const token = req.cookies?.auth;
 
     if (!token) {
-      return next(
-        new AppError("Authentication required", 401)
-      );
+      return next(new AppError("Authentication required", 401));
     }
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const [user] = await db
       .select()
@@ -27,9 +22,7 @@ export const authenticate = async (req, res, next) => {
       .limit(1);
 
     if (!user) {
-      return next(
-        new AppError("User not found", 401)
-      );
+      return next(new AppError("User not found", 401));
     }
 
     req.user = {

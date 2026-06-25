@@ -4,10 +4,7 @@ import { db } from "../../config/db.js";
 import { users } from "../../schema/users.schema.js";
 import { AppError } from "../../utils/AppError.js";
 
-export const assignRoleService = async (
-  userId,
-  role
-) => {
+export const assignRoleService = async (userId,role)=>{
   const [user] = await db
     .select()
     .from(users)
@@ -15,10 +12,7 @@ export const assignRoleService = async (
     .limit(1);
 
   if (!user) {
-    throw new AppError(
-      "User not found",
-      404
-    );
+    throw new AppError("User not found",404);
   }
 
   await db

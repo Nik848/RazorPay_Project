@@ -1,0 +1,20 @@
+databases:
+  - name: razorpay-reimbursement-db
+    plan: free
+    databaseName: reimbursements_db
+    user: db_user
+
+services:
+  - type: web
+    name: razorpay-reimbursement-api
+    env: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: razorpay-reimbursement-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true

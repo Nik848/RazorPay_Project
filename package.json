@@ -8,7 +8,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed-data": "node src/scripts/seed.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "build": "npm install && npm run db:generate && npm run db:migrate"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
