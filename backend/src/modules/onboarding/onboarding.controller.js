@@ -47,7 +47,7 @@ export const login = async (req, res, next) => {
       sameSite: "strict",
     });
 
-    return res.status(200).json(new ApiResponse(200, "Login successful"));
+    return res.status(200).json(new ApiResponse(200, "Login successful", { user: { id: user.id, name: user.name, email: user.email, role: user.role } }));
   } catch (error) {
     return next(new AppError(error.message, 401));
   }

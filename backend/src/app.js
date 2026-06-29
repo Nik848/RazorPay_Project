@@ -1,4 +1,9 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import cookieParser from 'cookie-parser';
 import { errorHandler } from "./middleware/error.middleware.js";
 import onboardingRoutes from "./modules/onboarding/onboarding.routes.js";
@@ -16,18 +21,13 @@ app.use("/rest/employees", employeesRoutes);
 
 app.use("/rest/onboardings", onboardingRoutes);
 
-app.use(errorHandler);
-
 app.use(
   "/rest/reimbursements",
   reimbursementsRoutes
 );
 
-app.get("/", (req, res) => {
-  res.status(200).json({
-    status: "success",
-    message: "Server running",
-  });
-});
+app.use(errorHandler);
+
+app.use(express.static(path.join(__dirname, '../../frontend')));
 
 export default app;
