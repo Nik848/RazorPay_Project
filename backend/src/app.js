@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import { db } from "./config/db.js";
+import { sql } from "drizzle-orm";
 import { errorHandler } from "./middleware/error.middleware.js";
 import onboardingRoutes from "./modules/onboarding/onboarding.routes.js";
 import rolesRoutes from "./modules/roles/roles.routes.js";
@@ -14,8 +16,14 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Health Check Endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Server is healthy' });
+app.get('/health', async (req, res) => {
+  try {
+    await db.execute(sql`SELECT 1`);
+    res.status(200).json({ status: 'ok', message: 'Server is healthy and connected to the database' });
+  } catch (error) {
+    console.error('Database connection error:', error);
+    res.status(500).json({ status: 'error', message: 'Database connection failed' });
+  }
 });
 app.use("/rest/roles", rolesRoutes);
 app.use("/rest/employees", employeesRoutes);
