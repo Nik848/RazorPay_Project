@@ -1,9 +1,5 @@
 import express from 'express';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { errorHandler } from "./middleware/error.middleware.js";
 import onboardingRoutes from "./modules/onboarding/onboarding.routes.js";
@@ -13,8 +9,14 @@ import reimbursementsRoutes from "./modules/reimbursements/reimbursements.routes
 
 const app = express();
 
+app.use(cors({ origin: 'http://localhost:5173', credentials: true })); // Change origin in production
 app.use(express.json());
 app.use(cookieParser());
+
+// Health Check Endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Server is healthy' });
+});
 app.use("/rest/roles", rolesRoutes);
 app.use("/rest/employees", employeesRoutes);
 
@@ -28,11 +30,5 @@ app.use(
 
 app.use(errorHandler);
 
-app.use(express.static(path.join(__dirname, '../../frontend/dist')));
-
-// Fallback for React Router (Single Page Application)
-app.get(/^(.*)$/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
-});
 
 export default app;
